@@ -11,6 +11,10 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import mediapipe as mp
 
+from importlib.machinery import SourceFileLoader
+
+gfpgan = SourceFileLoader("gfpgan","/lip_sync/gfpgan/gfpgan/__init__.py").load_module()
+
 parser = argparse.ArgumentParser(description='Inference code to lip-sync videos in the wild using Wav2Lip models')
 
 parser.add_argument('--checkpoint_path', type=str,
@@ -59,6 +63,9 @@ parser.add_argument('--face_landmarks_detector_path', default='weights/face_land
 parser.add_argument('--with_face_mask', default=True, action='store_true',
 					help='Blend output into original frame using a face mask rather than directly blending the face box. This prevents a lower resolution square artifact around lower face')
 
+parser.add_argument('--enhance', type=bool, default=True,
+					help='Enhance output video with GFPGAN')
+
 args = parser.parse_args()
 args.img_size = 96
 
@@ -69,6 +76,8 @@ def get_smoothened_boxes(boxes, T):
 	empty_indexes = []
 	for idx, box in enumerate(boxes):
 		if not box.any(): empty_indexes.append(idx)
+
+	print('Empty boxes: {}'.format(empty_indexes))
 
 	empty_indexes = iter(empty_indexes)
 	next_empty_index = next(empty_indexes, None)
@@ -109,7 +118,7 @@ def face_detect(images):
 	pady1, pady2, padx1, padx2 = args.pads
 	for rect, image in zip(predictions, images):
 		if rect is None:
-			results.append([])
+			results.append([0, 0, 0, 0])
 		else:
 			y1 = max(0, rect[1] - pady1)
 			y2 = min(image.shape[0], rect[3] + pady2)
@@ -143,12 +152,12 @@ def datagen(frames, mels):
 		frame_to_save = frames[idx].copy()
 		face, coords = face_det_results[idx].copy()
 
-		if len(coords) == 0:
-			face = np.random.rand(args.img_size, args.img_size, 3) * 255
-			coords_batch.append([])
-		else:
+		if any(coords):
 			face = cv2.resize(face, (args.img_size, args.img_size))
 			coords_batch.append(coords)
+		else:
+			face = np.random.rand(args.img_size, args.img_size, 3) * 255
+			coords_batch.append([])
 
 		img_batch.append(face)
 		mel_batch.append(m)
@@ -202,7 +211,7 @@ def load_model(path):
 	model = model.to(device)
 	return model.eval()
 
-def face_mask_from_image(image, face_landmarks_detector):
+def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 	"""
 	Calculate face mask from image. This is done by
 
@@ -225,7 +234,10 @@ def face_mask_from_image(image, face_landmarks_detector):
 		return mask
 
 	# extract landmarks coordinates
-	face_coords = np.array([[lm.x * image.shape[1], lm.y * image.shape[0]] for lm in detection.face_landmarks[0]])
+	if landmarks:
+		face_coords = np.array([[detection.face_landmarks[0][idx].x * image.shape[1], detection.face_landmarks[0][idx].y * image.shape[0]] for idx in landmarks])
+	else:
+		face_coords = np.array([[lm.x * image.shape[1], lm.y * image.shape[0]] for lm in detection.face_landmarks[0]])
 
 	# calculate convex hull from face coordinates
 	convex_hull = cv2.convexHull(face_coords.astype(np.float32))
@@ -319,6 +331,14 @@ def main():
 		if i == 0:
 			model = load_model(args.checkpoint_path)
 			print ("Model loaded")
+			if args.enhance:
+				restorer = gfpgan.GFPGANer(
+					model_path='/lip_sync/gfpgan/experiments/pretrained_models/GFPGANv1.4.pth',
+					upscale=1,
+					arch='clean',
+					channel_multiplier=2,
+					bg_upsampler=None
+				)
 
 		img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
 		mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
@@ -329,15 +349,68 @@ def main():
 		pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
 
 		for j, (p, f, c) in enumerate(zip(pred, frames, coords)):
-			y1, y2, x1, x2 = c
-
 			if len(c) > 0:
+				y1, y2, x1, x2 = c
+
 				p = cv2.resize(p.astype(np.uint8), (x2 - x1, y2 - y1))
+
+				if args.enhance:
+					_, _, p = restorer.enhance(
+						p,
+						has_aligned=False,
+						only_center_face=True,
+						paste_back=True,
+						weight=0.5
+					)
+
 				if face_landmarks_detector:
-					mask = face_mask_from_image(p, face_landmarks_detector)
-					f[y1:y2, x1:x2] = f[y1:y2, x1:x2] * (1 - mask[..., None]) + p * mask[..., None]
-				else:
-					f[y1:y2, x1:x2] = p
+					mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
+					lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
+					raw_mouth_mask = face_mask_from_image(p, face_landmarks_detector, mouth_landmarks)
+					raw_lower_face_mask = face_mask_from_image(p, face_landmarks_detector, lower_face_landmarks)
+
+					edge_kernel = np.ones((20, 20), np.uint8)
+					raw_edge_mask = cv2.erode(raw_lower_face_mask, edge_kernel, iterations=1)
+
+					edge_mask = (raw_lower_face_mask - raw_edge_mask)[..., None]
+					lower_face_mask = (raw_edge_mask - raw_mouth_mask)[..., None]
+					mouth_mask = raw_mouth_mask[..., None]
+
+					new_face = f[y1:y2, x1:x2] * (1 - raw_lower_face_mask[..., None]) \
+						+ (f[y1:y2, x1:x2] * edge_mask * 0.6 + p * edge_mask * 0.4) \
+						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
+						+ p * mouth_mask
+
+					new_face_blurred = cv2.GaussianBlur(new_face, (9, 9), 0)
+
+					contour_kernel = np.ones((5, 5), np.uint8)
+					outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					inner_edge_contours, _ = cv2.findContours(cv2.erode(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					outer_lower_face_contours, _ = cv2.findContours(cv2.dilate(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					inner_lower_face_contours, _ = cv2.findContours(cv2.erode(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					outer_mouth_contours, _ = cv2.findContours(cv2.dilate(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					inner_mouth_contours, _ = cv2.findContours(cv2.erode(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+
+					edge_contour_mask = np.zeros_like(new_face)
+					cv2.drawContours(edge_contour_mask, outer_edge_contours, -1, (255, 255, 255), cv2.FILLED)
+					cv2.drawContours(edge_contour_mask, inner_edge_contours, -1, (0, 0, 0), cv2.FILLED)
+					lower_face_contour_mask = np.zeros_like(new_face)
+					cv2.drawContours(lower_face_contour_mask, outer_lower_face_contours, -1, (255, 255, 255), cv2.FILLED)
+					cv2.drawContours(lower_face_contour_mask, inner_lower_face_contours, -1, (0, 0, 0), cv2.FILLED)
+					mouth_contour_mask = np.zeros_like(new_face)
+					cv2.drawContours(mouth_contour_mask, outer_mouth_contours, -1, (255, 255, 255), cv2.FILLED)
+					cv2.drawContours(mouth_contour_mask, inner_mouth_contours, -1, (0, 0, 0), cv2.FILLED)
+
+					edge_contour_mask = np.where((edge_contour_mask - lower_face_contour_mask - mouth_contour_mask) > 0, 1, 0)
+					lower_face_contour_mask = np.where((lower_face_contour_mask - mouth_contour_mask - edge_contour_mask) > 0, 1, 0)
+					mouth_contour_mask = np.where((mouth_contour_mask - edge_contour_mask - lower_face_contour_mask) > 0, 1, 0)
+
+					p = new_face * (1 - (edge_contour_mask + lower_face_contour_mask + mouth_contour_mask)) \
+						+ new_face_blurred * edge_contour_mask \
+						+ new_face_blurred * lower_face_contour_mask \
+						+ new_face_blurred * mouth_contour_mask
+
+				f[y1:y2, x1:x2] = p
 
 			cv2.imwrite(f'{args.outfolder}/{i * batch_size + j:06d}.png', f)
 
