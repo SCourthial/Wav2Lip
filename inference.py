@@ -381,7 +381,7 @@ def main():
 						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
 						+ p * mouth_mask
 
-					new_face_blurred = cv2.GaussianBlur(new_face, (9, 9), 0)
+					new_face_blurred = cv2.GaussianBlur(new_face, (7, 7), 0)
 
 					contour_kernel = np.ones((5, 5), np.uint8)
 					outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
