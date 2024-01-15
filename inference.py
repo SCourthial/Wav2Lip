@@ -308,7 +308,7 @@ def main():
 
 	print("Length of mel chunks: {}".format(len(mel_chunks)))
 
-	full_frames = full_frames[:len(mel_chunks)]
+	# full_frames = full_frames[:len(mel_chunks)]
 
 	batch_size = args.wav2lip_batch_size
 	gen = datagen(full_frames.copy(), mel_chunks)
