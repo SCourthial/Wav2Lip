@@ -306,7 +306,8 @@ def main():
 		mel_chunks.append(mel[:, start_idx : start_idx + mel_step_size])
 		i += 1
 
-	print(mel_chunks[0])
+	print(mel_chunks[0].shape)
+	print(mel_chunks[15].shape)
 
 	print("Length of mel chunks: {}".format(len(mel_chunks)))
 
