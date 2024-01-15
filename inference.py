@@ -306,10 +306,12 @@ def main():
 		mel_chunks.append(mel[:, start_idx : start_idx + mel_step_size])
 		i += 1
 
+	print("Length of mel chunks: {}".format(len(mel_chunks)))
+
 	for i in range(max(0, len(full_frames) - (len(mel_chunks)))):
 		mel_chunks.append(np.zeros(mel_chunks[0].shape))
 
-	print("Length of mel chunks: {}".format(len(mel_chunks)))
+		print("New length of mel chunks: {}".format(len(mel_chunks)))
 
 	full_frames = full_frames[:len(mel_chunks)]
 
