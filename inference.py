@@ -246,16 +246,15 @@ def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 	return cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1)
 
 def main():
+	print('Starting...')
 	if not os.path.isfile(args.face):
 		raise ValueError('--face argument must be a valid path to video/image file')
 
 	elif args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
 		full_frames = [cv2.imread(args.face)]
-		fps = args.fps
 
 	else:
 		video_stream = cv2.VideoCapture(args.face)
-		fps = video_stream.get(cv2.CAP_PROP_FPS)
 
 		print('Reading video frames...')
 
