@@ -300,6 +300,8 @@ def main():
 	i = 0
 	while 1:
 		start_idx = int(i * mel_idx_multiplier)
+		print('start_idx: {}'.format(start_idx))
+		print('mel_idx_multiplier: {}'.format(mel_idx_multiplier))
 		if start_idx + mel_step_size > len(mel[0]):
 			mel_chunks.append(mel[:, len(mel[0]) - mel_step_size:])
 			break
@@ -308,8 +310,9 @@ def main():
 
 	print("Length of mel chunks: {}".format(len(mel_chunks)))
 
-	for i in range(max(0, len(full_frames) - (len(mel_chunks)))):
-		mel_chunks.append(np.zeros(mel_chunks[0].shape))
+	if len(full_frames) > len(mel_chunks):
+		for i in range(len(full_frames) - (len(mel_chunks))):
+			mel_chunks.append(np.zeros(mel_chunks[0].shape))
 
 		print("New length of mel chunks: {}".format(len(mel_chunks)))
 
