@@ -221,8 +221,8 @@ def read_audio_section(filename, start_time, stop_time):
 		raise ValueError("Not compatible with seeking")
 
 	sr = track.samplerate
-	start_frame = sr * start_time
-	frames_to_read = sr * (stop_time - start_time)
+	start_frame = round(sr * start_time)
+	frames_to_read = round(sr * (stop_time - start_time))
 	track.seek(start_frame)
 	audio_section = track.read(frames_to_read)
 	return audio_section
@@ -462,7 +462,7 @@ def main():
 				video_stream.release()
 				break
 
-			step_duration = float(len(full_frames)) / fps
+			step_duration = float(len(full_frames) + 1) / fps
 			stop_time = start_time + step_duration
 
 			index_offset = inference(
