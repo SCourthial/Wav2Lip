@@ -458,10 +458,6 @@ def main():
 		while 1:
 			still_reading, full_frames = read_next_video_frames(video_stream)
 
-			if not still_reading:
-				video_stream.release()
-				break
-
 			step_duration = float(len(full_frames) + 1) / fps
 			stop_time = start_time + step_duration
 
@@ -474,6 +470,10 @@ def main():
 				model=model,
 				restorer=restorer
 			)
+
+			if not still_reading:
+				video_stream.release()
+				break
 
 			start_time = stop_time
 
