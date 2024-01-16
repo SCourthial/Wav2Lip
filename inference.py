@@ -466,7 +466,6 @@ def main():
 
 			index_offset = inference(
 				full_frames,
-				fps,
 				start_time=start_time,
 				stop_time=stop_time,
 				index_offset=index_offset,
