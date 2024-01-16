@@ -297,11 +297,10 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 
 	mel_chunks = []
 	mel_idx_multiplier = (len(mel[0]) - mel_step_size + 1) / (len(full_frames) - 1)
+	print('mel_idx_multiplier: {}'.format(mel_idx_multiplier))
 	i = 0
 	while 1:
 		start_idx = int(i * mel_idx_multiplier)
-		print('start_idx: {}'.format(start_idx))
-		print('mel_idx_multiplier: {}'.format(mel_idx_multiplier))
 		if start_idx + mel_step_size > len(mel[0]):
 			mel_chunks.append(mel[:, len(mel[0]) - mel_step_size:])
 			break
