@@ -267,7 +267,7 @@ def read_next_video_frames(video_stream):
 		if not still_reading:
 			return False, frames
 
-		if frames >= args.batch_size:
+		if len(frames) >= args.batch_size:
 			return True, frames
 
 		if args.resize_factor > 1:
