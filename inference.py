@@ -246,7 +246,6 @@ def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 	return cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1)
 
 def main():
-	print('Starting...')
 	if not os.path.isfile(args.face):
 		raise ValueError('--face argument must be a valid path to video/image file')
 
@@ -261,7 +260,7 @@ def main():
 		full_frames = []
 		while 1:
 			still_reading, frame = video_stream.read()
-			if not still_reading:
+			if not still_reading or len(full_frames) >= 50:
 				video_stream.release()
 				break
 			if args.resize_factor > 1:
