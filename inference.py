@@ -10,6 +10,7 @@ import platform
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import mediapipe as mp
+import soundfile as sf
 
 from importlib.machinery import SourceFileLoader
 
@@ -35,6 +36,7 @@ parser.add_argument('--fps', type=float, help='Can be specified only if input is
 parser.add_argument('--pads', nargs='+', type=int, default=[0, 10, 0, 0],
 					help='Padding (top, bottom, left, right). Please adjust to include chin at least')
 
+parser.add_argument('--batch_size', type=int, help='Batch size for frame buffering', default=128)
 parser.add_argument('--face_det_batch_size', type=int,
 					help='Batch size for face detection', default=16)
 parser.add_argument('--wav2lip_batch_size', type=int, help='Batch size for Wav2Lip model(s)', default=128)
@@ -211,6 +213,19 @@ def load_model(path):
 	model = model.to(device)
 	return model.eval()
 
+def read_audio_section(filename, start_time, stop_time, sr=16000):
+	track = sf.SoundFile(filename, sr)
+
+	can_seek = track.seekable() # True
+	if not can_seek:
+		raise ValueError("Not compatible with seeking")
+
+	start_frame = sr * start_time
+	frames_to_read = sr * (stop_time - start_time)
+	track.seek(start_frame)
+	audio_section = track.read(frames_to_read)
+	return audio_section
+
 def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 	"""
 	Calculate face mask from image. This is done by
@@ -245,48 +260,34 @@ def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 	# apply convex hull to mask
 	return cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1)
 
-def main():
-	if not os.path.isfile(args.face):
-		raise ValueError('--face argument must be a valid path to video/image file')
+def read_next_video_frames(video_stream):
+	frames = []
+	while 1:
+		still_reading, frame = video_stream.read()
+		if not still_reading:
+			return False, frames
 
-	elif args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
-		full_frames = [cv2.imread(args.face)]
+		if frames >= args.batch_size:
+			return True, frames
 
-	else:
-		video_stream = cv2.VideoCapture(args.face)
+		if args.resize_factor > 1:
+			frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
 
-		print('Reading video frames...')
+		if args.rotate:
+			frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
 
-		full_frames = []
-		while 1:
-			still_reading, frame = video_stream.read()
-			if not still_reading or len(full_frames) >= 50:
-				video_stream.release()
-				break
-			if args.resize_factor > 1:
-				frame = cv2.resize(frame, (frame.shape[1]//args.resize_factor, frame.shape[0]//args.resize_factor))
+		y1, y2, x1, x2 = args.crop
+		if x2 == -1: x2 = frame.shape[1]
+		if y2 == -1: y2 = frame.shape[0]
 
-			if args.rotate:
-				frame = cv2.rotate(frame, cv2.cv2.ROTATE_90_CLOCKWISE)
+		frame = frame[y1:y2, x1:x2]
 
-			y1, y2, x1, x2 = args.crop
-			if x2 == -1: x2 = frame.shape[1]
-			if y2 == -1: y2 = frame.shape[0]
+		frames.append(frame)
 
-			frame = frame[y1:y2, x1:x2]
-
-			full_frames.append(frame)
-
+def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_landmarks_detector=None, model=None, restorer=None):
 	print ("Number of frames available for inference: "+str(len(full_frames)))
 
-	if not args.audio.endswith('.wav'):
-		print('Extracting raw audio...')
-		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
-
-		subprocess.call(command, shell=True)
-		args.audio = 'temp/temp.wav'
-
-	wav = audio.load_wav(args.audio, 16000)
+	wav = read_audio_section(args.audio, start_time, stop_time, sr=16000)
 	mel = audio.melspectrogram(wav)
 	print(mel.shape)
 
@@ -319,33 +320,11 @@ def main():
 	batch_size = args.wav2lip_batch_size
 	gen = datagen(full_frames.copy(), mel_chunks)
 
-	face_landmarks_detector = None
-	if args.with_face_mask and args.face_landmarks_detector_path:
-		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate='GPU')
-		options = vision.FaceLandmarkerOptions(
-			base_options=base_options,
-			output_face_blendshapes=True,
-			output_facial_transformation_matrixes=True,
-			num_faces=1
-		)
-		face_landmarks_detector = vision.FaceLandmarker.create_from_options(options)
-
 	os.makedirs(args.outfolder, exist_ok=True)
 
+	new_index_offset = index_offset
 	for i, (img_batch, mel_batch, frames, coords) in enumerate(tqdm(gen,
 											total=int(np.ceil(float(len(mel_chunks))/batch_size)))):
-		if i == 0:
-			model = load_model(args.checkpoint_path)
-			print ("Model loaded")
-			if args.enhance:
-				restorer = gfpgan.GFPGANer(
-					model_path='/lip_sync/gfpgan/experiments/pretrained_models/GFPGANv1.4.pth',
-					upscale=1,
-					arch='clean',
-					channel_multiplier=2,
-					bg_upsampler=None
-				)
-
 		img_batch = torch.FloatTensor(np.transpose(img_batch, (0, 3, 1, 2))).to(device)
 		mel_batch = torch.FloatTensor(np.transpose(mel_batch, (0, 3, 1, 2))).to(device)
 
@@ -418,7 +397,85 @@ def main():
 
 				f[y1:y2, x1:x2] = p
 
-			cv2.imwrite(f'{args.outfolder}/{i * batch_size + j:06d}.png', f)
+			cv2.imwrite(f'{args.outfolder}/{index_offset + i * batch_size + j:06d}.png', f)
+			new_index_offset += 1
+
+	return new_index_offset
+
+def main():
+	if not os.path.isfile(args.face):
+		raise ValueError('--face argument must be a valid path to video/image file')
+
+	if not args.audio.endswith('.wav'):
+		print('Extracting raw audio...')
+		command = 'ffmpeg -y -i {} -strict -2 {}'.format(args.audio, 'temp/temp.wav')
+
+		subprocess.call(command, shell=True)
+		args.audio = 'temp/temp.wav'
+
+	face_landmarks_detector = None
+	if args.with_face_mask and args.face_landmarks_detector_path:
+		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate='GPU')
+		options = vision.FaceLandmarkerOptions(
+			base_options=base_options,
+			output_face_blendshapes=True,
+			output_facial_transformation_matrixes=True,
+			num_faces=1
+		)
+		face_landmarks_detector = vision.FaceLandmarker.create_from_options(options)
+
+	model = load_model(args.checkpoint_path)
+	if args.enhance:
+		restorer = gfpgan.GFPGANer(
+			model_path='/lip_sync/gfpgan/experiments/pretrained_models/GFPGANv1.4.pth',
+			upscale=1,
+			arch='clean',
+			channel_multiplier=2,
+			bg_upsampler=None
+		)
+
+	print ("Models loaded")
+
+	if args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
+		full_frames = [cv2.imread(args.face)]
+		fps = args.fps
+
+		inference(
+			full_frames,
+			face_landmarks_detector=face_landmarks_detector,
+			model=model,
+			restorer=restorer
+		)
+	else:
+		video_stream = cv2.VideoCapture(args.face)
+		fps = video_stream.get(cv2.CAP_PROP_FPS)
+		start_time = 0.0
+		index_offset = 0
+
+		print('Reading video frames...')
+
+		while 1:
+			still_reading, full_frames = read_next_video_frames(video_stream)
+
+			if not still_reading:
+				video_stream.release()
+				break
+
+			step_duration = float(len(full_frames)) / fps
+			stop_time = start_time + step_duration
+
+			index_offset = inference(
+				full_frames,
+				fps,
+				start_time=start_time,
+				stop_time=stop_time,
+				index_offset=index_offset,
+				face_landmarks_detector=face_landmarks_detector,
+				model=model,
+				restorer=restorer
+			)
+
+			start_time = stop_time
 
 if __name__ == '__main__':
 	main()
