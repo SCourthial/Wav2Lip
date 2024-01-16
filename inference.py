@@ -213,13 +213,14 @@ def load_model(path):
 	model = model.to(device)
 	return model.eval()
 
-def read_audio_section(filename, start_time, stop_time, sr=16000):
-	track = sf.SoundFile(filename, samplerate=sr)
+def read_audio_section(filename, start_time, stop_time):
+	track = sf.SoundFile(filename)
 
 	can_seek = track.seekable() # True
 	if not can_seek:
 		raise ValueError("Not compatible with seeking")
 
+	sr = track.samplerate
 	start_frame = sr * start_time
 	frames_to_read = sr * (stop_time - start_time)
 	track.seek(start_frame)
@@ -287,7 +288,7 @@ def read_next_video_frames(video_stream):
 def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_landmarks_detector=None, model=None, restorer=None):
 	print ("Number of frames available for inference: "+str(len(full_frames)))
 
-	wav = read_audio_section(args.audio, start_time, stop_time, sr=16000)
+	wav = read_audio_section(args.audio, start_time, stop_time)
 	mel = audio.melspectrogram(wav)
 	print(mel.shape)
 
