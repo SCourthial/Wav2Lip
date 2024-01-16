@@ -214,7 +214,7 @@ def load_model(path):
 	return model.eval()
 
 def read_audio_section(filename, start_time, stop_time, sr=16000):
-	track = sf.SoundFile(filename, sr)
+	track = sf.SoundFile(filename, samplerate=sr)
 
 	can_seek = track.seekable() # True
 	if not can_seek:
