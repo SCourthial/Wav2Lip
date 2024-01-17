@@ -366,10 +366,10 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
 						+ p * mouth_mask
 
-					new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
-
 					contour_kernel_size = min(y2 - y1, x2 - x1, 200) // 40
 					if contour_kernel_size > 0:
+						new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
+
 						contour_kernel = np.ones((contour_kernel_size, contour_kernel_size), np.uint8)
 						outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
 						inner_edge_contours, _ = cv2.findContours(cv2.erode(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
