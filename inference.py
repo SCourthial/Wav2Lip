@@ -366,34 +366,37 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
 						+ p * mouth_mask
 
-					# new_face_blurred = cv2.GaussianBlur(new_face, (7, 7), 0)
+					new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
 
-					# contour_kernel = np.ones((5, 5), np.uint8)
-					# outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-					# inner_edge_contours, _ = cv2.findContours(cv2.erode(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-					# outer_lower_face_contours, _ = cv2.findContours(cv2.dilate(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-					# inner_lower_face_contours, _ = cv2.findContours(cv2.erode(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-					# outer_mouth_contours, _ = cv2.findContours(cv2.dilate(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-					# inner_mouth_contours, _ = cv2.findContours(cv2.erode(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+					contour_kernel_size = min(y2 - y1, x2 - x1) // 20
+					print('contour_kernel_size: {}'.format(contour_kernel_size))
+					if contour_kernel_size > 0:
+						contour_kernel = np.ones((contour_kernel_size, contour_kernel_size), np.uint8)
+						outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+						inner_edge_contours, _ = cv2.findContours(cv2.erode(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+						outer_lower_face_contours, _ = cv2.findContours(cv2.dilate(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+						inner_lower_face_contours, _ = cv2.findContours(cv2.erode(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+						outer_mouth_contours, _ = cv2.findContours(cv2.dilate(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
+						inner_mouth_contours, _ = cv2.findContours(cv2.erode(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
 
-					# edge_contour_mask = np.zeros_like(new_face)
-					# cv2.drawContours(edge_contour_mask, outer_edge_contours, -1, (255, 255, 255), cv2.FILLED)
-					# cv2.drawContours(edge_contour_mask, inner_edge_contours, -1, (0, 0, 0), cv2.FILLED)
-					# lower_face_contour_mask = np.zeros_like(new_face)
-					# cv2.drawContours(lower_face_contour_mask, outer_lower_face_contours, -1, (255, 255, 255), cv2.FILLED)
-					# cv2.drawContours(lower_face_contour_mask, inner_lower_face_contours, -1, (0, 0, 0), cv2.FILLED)
-					# mouth_contour_mask = np.zeros_like(new_face)
-					# cv2.drawContours(mouth_contour_mask, outer_mouth_contours, -1, (255, 255, 255), cv2.FILLED)
-					# cv2.drawContours(mouth_contour_mask, inner_mouth_contours, -1, (0, 0, 0), cv2.FILLED)
+						edge_contour_mask = np.zeros_like(p)
+						cv2.drawContours(edge_contour_mask, outer_edge_contours, -1, (255, 255, 255), cv2.FILLED)
+						cv2.drawContours(edge_contour_mask, inner_edge_contours, -1, (0, 0, 0), cv2.FILLED)
+						lower_face_contour_mask = np.zeros_like(p)
+						cv2.drawContours(lower_face_contour_mask, outer_lower_face_contours, -1, (255, 255, 255), cv2.FILLED)
+						cv2.drawContours(lower_face_contour_mask, inner_lower_face_contours, -1, (0, 0, 0), cv2.FILLED)
+						mouth_contour_mask = np.zeros_like(p)
+						cv2.drawContours(mouth_contour_mask, outer_mouth_contours, -1, (255, 255, 255), cv2.FILLED)
+						cv2.drawContours(mouth_contour_mask, inner_mouth_contours, -1, (0, 0, 0), cv2.FILLED)
 
-					# edge_contour_mask = np.where((edge_contour_mask - lower_face_contour_mask - mouth_contour_mask) > 0, 1, 0)
-					# lower_face_contour_mask = np.where((lower_face_contour_mask - mouth_contour_mask - edge_contour_mask) > 0, 1, 0)
-					# mouth_contour_mask = np.where((mouth_contour_mask - edge_contour_mask - lower_face_contour_mask) > 0, 1, 0)
+						edge_contour_mask = np.where((edge_contour_mask - lower_face_contour_mask - mouth_contour_mask) > 0, 1, 0)
+						lower_face_contour_mask = np.where((lower_face_contour_mask - mouth_contour_mask - edge_contour_mask) > 0, 1, 0)
+						mouth_contour_mask = np.where((mouth_contour_mask - edge_contour_mask - lower_face_contour_mask) > 0, 1, 0)
 
-					# p = new_face * (1 - (edge_contour_mask + lower_face_contour_mask + mouth_contour_mask)) \
-					# 	+ new_face_blurred * edge_contour_mask \
-					# 	+ new_face_blurred * lower_face_contour_mask \
-					# 	+ new_face_blurred * mouth_contour_mask
+						p = p * (1 - (edge_contour_mask + lower_face_contour_mask + mouth_contour_mask)) \
+							+ new_face_blurred * edge_contour_mask \
+							+ new_face_blurred * lower_face_contour_mask \
+							+ new_face_blurred * mouth_contour_mask
 
 				f[y1:y2, x1:x2] = p
 
