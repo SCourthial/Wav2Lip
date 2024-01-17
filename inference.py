@@ -366,7 +366,7 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
 						+ p * mouth_mask
 
-					contour_kernel_size = min(y2 - y1, x2 - x1, 200) // 40
+					contour_kernel_size = min(y2 - y1, x2 - x1, 150) // 50
 					if contour_kernel_size > 0:
 						new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
 
@@ -417,7 +417,7 @@ def main():
 
 	face_landmarks_detector = None
 	if args.with_face_mask and args.face_landmarks_detector_path:
-		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate='GPU')
+		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate=python.BaseOptions.Delegate.GPU)
 		options = vision.FaceLandmarkerOptions(
 			base_options=base_options,
 			output_face_blendshapes=True,
