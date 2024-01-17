@@ -369,7 +369,6 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 					new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
 
 					contour_kernel_size = min(y2 - y1, x2 - x1, 200) // 40
-					print('contour_kernel_size: {}'.format(contour_kernel_size))
 					if contour_kernel_size > 0:
 						contour_kernel = np.ones((contour_kernel_size, contour_kernel_size), np.uint8)
 						outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
