@@ -417,7 +417,7 @@ def main():
 
 	face_landmarks_detector = None
 	if args.with_face_mask and args.face_landmarks_detector_path:
-		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate=python.BaseOptions.Delegate.GPU)
+		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate='GPU')
 		options = vision.FaceLandmarkerOptions(
 			base_options=base_options,
 			output_face_blendshapes=True,
