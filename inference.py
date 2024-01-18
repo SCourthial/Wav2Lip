@@ -247,14 +247,14 @@ def face_mask_from_image(image, face_landmarks_detector):
 	if len(detection.face_landmarks) == 0:
 		# no face detected - set mask to all of the image
 		mask[:] = 1
-		return mask
+		return mask, np.copy(mask)
 
-	# extract landmarks coordinates
 	mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
 	lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
 
 	result = []
 	for landmarks in [mouth_landmarks, lower_face_landmarks]:
+		# extract landmarks coordinates
 		face_coords = np.array([[detection.face_landmarks[0][idx].x * image.shape[1], detection.face_landmarks[0][idx].y * image.shape[0]] for idx in landmarks])
 
 		# calculate convex hull from face coordinates
