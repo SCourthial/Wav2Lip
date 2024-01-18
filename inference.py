@@ -227,7 +227,7 @@ def read_audio_section(filename, start_time, stop_time):
 	audio_section = track.read(frames_to_read)
 	return audio_section
 
-def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
+def face_mask_from_image(image, timestamp_ms, face_landmarks_detector, landmarks=None):
 	"""
 	Calculate face mask from image. This is done by
 
@@ -242,7 +242,7 @@ def face_mask_from_image(image, face_landmarks_detector, landmarks=None):
 
 	# detect face landmarks
 	mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-	detection = face_landmarks_detector.detect(mp_image)
+	detection = face_landmarks_detector.detect_for_video(mp_image, timestamp_ms)
 
 	if len(detection.face_landmarks) == 0:
 		# no face detected - set mask to all of the image
@@ -334,6 +334,7 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 		pred = pred.cpu().numpy().transpose(0, 2, 3, 1) * 255.
 
 		for j, (p, f, c) in enumerate(zip(pred, frames, coords)):
+			current_loop_idx = i * batch_size + j
 			if len(c) > 0:
 				y1, y2, x1, x2 = c
 
@@ -349,10 +350,12 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 					)
 
 				if face_landmarks_detector:
+					timestamp_ms = start_time + (current_loop_idx * ((stop_time - start_time) / len(full_frames)))
+
 					mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
 					lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
-					raw_mouth_mask = face_mask_from_image(p, face_landmarks_detector, mouth_landmarks)
-					raw_lower_face_mask = face_mask_from_image(p, face_landmarks_detector, lower_face_landmarks)
+					raw_mouth_mask = face_mask_from_image(p, timestamp_ms, face_landmarks_detector, mouth_landmarks)
+					raw_lower_face_mask = face_mask_from_image(p, timestamp_ms, face_landmarks_detector, lower_face_landmarks)
 
 					edge_kernel = np.ones((20, 20), np.uint8)
 					raw_edge_mask = cv2.erode(raw_lower_face_mask, edge_kernel, iterations=1)
@@ -399,7 +402,7 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 
 				f[y1:y2, x1:x2] = p
 
-			cv2.imwrite(f'{args.outfolder}/{index_offset + i * batch_size + j:06d}.png', f)
+			cv2.imwrite(f'{args.outfolder}/{index_offset + current_loop_idx:06d}.png', f)
 			new_index_offset += 1
 
 	return new_index_offset
@@ -417,9 +420,10 @@ def main():
 
 	face_landmarks_detector = None
 	if args.with_face_mask and args.face_landmarks_detector_path:
-		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate='GPU')
+		base_options = python.BaseOptions(model_asset_path=args.face_landmarks_detector_path, delegate=python.BaseOptions.Delegate.GPU)
 		options = vision.FaceLandmarkerOptions(
 			base_options=base_options,
+			running_mode=mp.tasks.vision.RunningMode.VIDEO,
 			output_face_blendshapes=True,
 			output_facial_transformation_matrixes=True,
 			num_faces=1
