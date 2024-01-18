@@ -354,7 +354,6 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 
 				if face_landmarks_detector:
 					raw_mouth_mask, raw_lower_face_mask = face_mask_from_image(p, face_landmarks_detector)
-					print(raw_mouth_mask.shape, raw_lower_face_mask.shape)
 
 					edge_kernel = np.ones((20, 20), np.uint8)
 					raw_edge_mask = cv2.erode(raw_lower_face_mask, edge_kernel, iterations=1)
