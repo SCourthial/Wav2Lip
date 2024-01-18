@@ -350,7 +350,7 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 					)
 
 				if face_landmarks_detector:
-					timestamp_ms = int((start_time + (current_loop_idx * ((stop_time - start_time) / len(full_frames)))) * 1000)
+					timestamp_ms = int((start_time + ((current_loop_idx + 1) * ((stop_time - start_time) / len(full_frames)))) * 1000)
 					print(timestamp_ms)
 
 					mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
