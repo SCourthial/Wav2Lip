@@ -227,7 +227,7 @@ def read_audio_section(filename, start_time, stop_time):
 	audio_section = track.read(frames_to_read)
 	return audio_section
 
-def face_mask_from_image(image, timestamp_ms, face_landmarks_detector, landmarks=None):
+def face_mask_from_image(image, timestamp_ms, face_landmarks_detector):
 	"""
 	Calculate face mask from image. This is done by
 
@@ -250,16 +250,20 @@ def face_mask_from_image(image, timestamp_ms, face_landmarks_detector, landmarks
 		return mask
 
 	# extract landmarks coordinates
-	if landmarks:
+	mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
+	lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
+
+	result = []
+	for landmarks in [mouth_landmarks, lower_face_landmarks]:
 		face_coords = np.array([[detection.face_landmarks[0][idx].x * image.shape[1], detection.face_landmarks[0][idx].y * image.shape[0]] for idx in landmarks])
-	else:
-		face_coords = np.array([[lm.x * image.shape[1], lm.y * image.shape[0]] for lm in detection.face_landmarks[0]])
 
-	# calculate convex hull from face coordinates
-	convex_hull = cv2.convexHull(face_coords.astype(np.float32))
+		# calculate convex hull from face coordinates
+		convex_hull = cv2.convexHull(face_coords.astype(np.float32))
 
-	# apply convex hull to mask
-	return cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1)
+		# apply convex hull to mask
+		result.append(cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1))
+
+	return result
 
 def read_next_video_frames(video_stream):
 	frames = []
@@ -350,13 +354,10 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 					)
 
 				if face_landmarks_detector:
-					timestamp_ms = int((start_time + ((current_loop_idx + 1) * ((stop_time - start_time) / len(full_frames)))) * 1000)
+					timestamp_ms = int((start_time + (current_loop_idx * ((stop_time - start_time) / len(full_frames)))) * 1000)
 					print(timestamp_ms)
 
-					mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
-					lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
-					raw_mouth_mask = face_mask_from_image(p, timestamp_ms, face_landmarks_detector, mouth_landmarks)
-					raw_lower_face_mask = face_mask_from_image(p, timestamp_ms, face_landmarks_detector, lower_face_landmarks)
+					raw_mouth_mask, raw_lower_face_mask = face_mask_from_image(p, timestamp_ms, face_landmarks_detector)
 
 					edge_kernel = np.ones((20, 20), np.uint8)
 					raw_edge_mask = cv2.erode(raw_lower_face_mask, edge_kernel, iterations=1)
