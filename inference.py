@@ -237,23 +237,22 @@ def face_mask_from_image(image, face_landmarks_detector):
 	Returns:
 		A uint8 numpy array with the same height and width of the input image, containing a binary mask of the face in the image
 	"""
-	# initialize mask
-	mask = np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8)
+	image_shape = (image.shape[0], image.shape[1])
 
 	# detect face landmarks
 	mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
 	detection = face_landmarks_detector.detect(mp_image)
 
-	if len(detection.face_landmarks) == 0:
-		# no face detected - set mask to all of the image
-		mask[:] = 1
-		return mask, np.copy(mask)
-
 	mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
 	lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
+	landmarks_list = [mouth_landmarks, lower_face_landmarks]
+
+	if len(detection.face_landmarks) == 0:
+		# no face detected - set mask to all of the image
+		return [np.ones(image_shape, dtype=np.uint8) for _ in landmarks_list]
 
 	result = []
-	for landmarks in [mouth_landmarks, lower_face_landmarks]:
+	for landmarks in landmarks_list:
 		# extract landmarks coordinates
 		face_coords = np.array([[detection.face_landmarks[0][idx].x * image.shape[1], detection.face_landmarks[0][idx].y * image.shape[0]] for idx in landmarks])
 
@@ -261,7 +260,7 @@ def face_mask_from_image(image, face_landmarks_detector):
 		convex_hull = cv2.convexHull(face_coords.astype(np.float32))
 
 		# apply convex hull to mask
-		result.append(cv2.fillPoly(mask, pts=[convex_hull.squeeze().astype(np.int32)], color=1))
+		result.append(cv2.fillPoly(np.zeros(image_shape, dtype=np.uint8), pts=[convex_hull.squeeze().astype(np.int32)], color=1))
 
 	return result
 
