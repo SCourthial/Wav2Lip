@@ -70,6 +70,7 @@ parser.add_argument('--enhance', type=bool, default=True,
 
 args = parser.parse_args()
 args.img_size = 96
+args.min_batch_size = 32
 
 if os.path.isfile(args.face) and args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
 	args.static = True
@@ -263,14 +264,14 @@ def face_mask_from_image(image, face_landmarks_detector):
 
 	return result
 
-def read_next_video_frames(video_stream):
+def read_next_video_frames(video_stream, frame_count):
 	frames = []
 	while 1:
 		still_reading, frame = video_stream.read()
 		if not still_reading:
 			return False, frames
 
-		if len(frames) >= args.batch_size:
+		if len(frames) >= frame_count:
 			return True, frames
 
 		if args.resize_factor > 1:
@@ -451,19 +452,22 @@ def main():
 	else:
 		video_stream = cv2.VideoCapture(args.face)
 		fps = video_stream.get(cv2.CAP_PROP_FPS)
+		length = int(video_stream.get(cv2.CAP_PROP_FRAME_COUNT))
 		start_time = 0.0
 		index_offset = 0
 
 		print('Reading video frames...')
 
+		read_frames_count = 0
 		while 1:
-			still_reading, full_frames = read_next_video_frames(video_stream)
+			# frame_count = min(args.batch_size, length - read_frames_count - args.min_batch_size)
+			still_reading, frames = read_next_video_frames(video_stream, args.batch_size)
+			read_frames_count += len(frames)
 
-			step_duration = float(len(full_frames) + 1) / fps
-			stop_time = start_time + step_duration
+			stop_time = float(read_frames_count) / fps
 
 			index_offset = inference(
-				full_frames,
+				frames,
 				start_time=start_time,
 				stop_time=stop_time,
 				index_offset=index_offset,
