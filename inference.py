@@ -188,7 +188,6 @@ def datagen(frames, mels):
 
 		yield img_batch, mel_batch, frame_batch, coords_batch
 
-mel_step_size = 16
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print('Using {} for inference.'.format(device))
 
@@ -299,7 +298,8 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 		raise ValueError('Mel contains nan! Using a TTS voice? Add a small epsilon noise to the wav file and try again')
 
 	mel_chunks = []
-	mel_idx_multiplier = (max(len(mel[0]) - mel_step_size, 0) + 1) / (len(full_frames) - 1)
+	mel_step_size = min(16, len(mel[0]))
+	mel_idx_multiplier = (len(mel[0]) - mel_step_size + 1) / (len(full_frames) - 1)
 	print('mel_idx_multiplier: {}'.format(mel_idx_multiplier))
 	i = 0
 	while 1:
