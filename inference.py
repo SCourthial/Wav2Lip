@@ -300,7 +300,7 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 
 	mel_chunks = []
 	mel_step_size = min(16, len(mel[0]))
-	mel_idx_multiplier = (len(mel[0]) - mel_step_size + 1) / (len(full_frames) - 1)
+	mel_idx_multiplier = (len(mel[0]) - mel_step_size + 1) / (len(full_frames) - 1) if len(full_frames) > 1 else 1
 	print('mel_idx_multiplier: {}'.format(mel_idx_multiplier))
 	i = 0
 	while 1:
@@ -460,8 +460,9 @@ def main():
 
 		read_frames_count = 0
 		while 1:
-			# frame_count = min(args.batch_size, length - read_frames_count - args.min_batch_size)
-			still_reading, frames = read_next_video_frames(video_stream, args.batch_size)
+			remaining_frames_in_next_batch = length - read_frames_count - args.batch_size
+			frame_count = length - read_frames_count // 2 if remaining_frames_in_next_batch > 0 and remaining_frames_in_next_batch < args.min_batch_size else args.batch_size
+			still_reading, frames = read_next_video_frames(video_stream, frame_count)
 			read_frames_count += len(frames)
 
 			stop_time = float(read_frames_count) / fps
