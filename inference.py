@@ -11,6 +11,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import mediapipe as mp
 import soundfile as sf
+from utils import Laplacian_Pyramid_Blending_with_mask
 
 from importlib.machinery import SourceFileLoader
 
@@ -244,8 +245,8 @@ def face_mask_from_image(image, face_landmarks_detector):
 	detection = face_landmarks_detector.detect(mp_image)
 
 	mouth_landmarks = [57, 186, 92, 165, 167, 164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43]
-	lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
-	landmarks_list = [mouth_landmarks, lower_face_landmarks]
+	# lower_face_landmarks = [132, 177, 147, 205, 203, 98, 97, 2, 326, 327, 423, 425, 376, 401, 361, 435, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132]
+	landmarks_list = [mouth_landmarks]
 
 	if len(detection.face_landmarks) == 0:
 		# no face detected - set mask to all of the image
@@ -353,50 +354,12 @@ def inference(full_frames, start_time=0, stop_time=None, index_offset=0, face_la
 					)
 
 				if face_landmarks_detector:
-					raw_mouth_mask, raw_lower_face_mask = face_mask_from_image(p, face_landmarks_detector)
+					raw_mouth_mask = face_mask_from_image(p, face_landmarks_detector)[0]
 
-					edge_kernel = np.ones((20, 20), np.uint8)
-					raw_edge_mask = cv2.erode(raw_lower_face_mask, edge_kernel, iterations=1)
+					p2, f2, raw_mouth_mask2 = [cv2.resize(x, (512, 512)) for x in (p, f[y1:y2, x1:x2], raw_mouth_mask)]
 
-					edge_mask = (raw_lower_face_mask - raw_edge_mask)[..., None]
-					lower_face_mask = (raw_edge_mask - raw_mouth_mask)[..., None]
-					mouth_mask = raw_mouth_mask[..., None]
-
-					p = f[y1:y2, x1:x2] * (1 - raw_lower_face_mask[..., None]) \
-						+ (f[y1:y2, x1:x2] * edge_mask * 0.6 + p * edge_mask * 0.4) \
-						+ (f[y1:y2, x1:x2] * lower_face_mask * 0.3 + p * lower_face_mask * 0.7) \
-						+ p * mouth_mask
-
-					contour_kernel_size = min(y2 - y1, x2 - x1, 150) // 50
-					if contour_kernel_size > 0:
-						new_face_blurred = cv2.GaussianBlur(p, (7, 7), 0)
-
-						contour_kernel = np.ones((contour_kernel_size, contour_kernel_size), np.uint8)
-						outer_edge_contours, _ = cv2.findContours(cv2.dilate(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-						inner_edge_contours, _ = cv2.findContours(cv2.erode(raw_edge_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-						outer_lower_face_contours, _ = cv2.findContours(cv2.dilate(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-						inner_lower_face_contours, _ = cv2.findContours(cv2.erode(raw_lower_face_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-						outer_mouth_contours, _ = cv2.findContours(cv2.dilate(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-						inner_mouth_contours, _ = cv2.findContours(cv2.erode(raw_mouth_mask, contour_kernel, iterations=1), cv2.RETR_EXTERNAL , cv2.CHAIN_APPROX_SIMPLE)
-
-						edge_contour_mask = np.zeros_like(p)
-						cv2.drawContours(edge_contour_mask, outer_edge_contours, -1, (255, 255, 255), cv2.FILLED)
-						cv2.drawContours(edge_contour_mask, inner_edge_contours, -1, (0, 0, 0), cv2.FILLED)
-						lower_face_contour_mask = np.zeros_like(p)
-						cv2.drawContours(lower_face_contour_mask, outer_lower_face_contours, -1, (255, 255, 255), cv2.FILLED)
-						cv2.drawContours(lower_face_contour_mask, inner_lower_face_contours, -1, (0, 0, 0), cv2.FILLED)
-						mouth_contour_mask = np.zeros_like(p)
-						cv2.drawContours(mouth_contour_mask, outer_mouth_contours, -1, (255, 255, 255), cv2.FILLED)
-						cv2.drawContours(mouth_contour_mask, inner_mouth_contours, -1, (0, 0, 0), cv2.FILLED)
-
-						edge_contour_mask = np.where((edge_contour_mask - lower_face_contour_mask - mouth_contour_mask) > 0, 1, 0)
-						lower_face_contour_mask = np.where((lower_face_contour_mask - mouth_contour_mask - edge_contour_mask) > 0, 1, 0)
-						mouth_contour_mask = np.where((mouth_contour_mask - edge_contour_mask - lower_face_contour_mask) > 0, 1, 0)
-
-						p = p * (1 - (edge_contour_mask + lower_face_contour_mask + mouth_contour_mask)) \
-							+ new_face_blurred * edge_contour_mask \
-							+ new_face_blurred * lower_face_contour_mask \
-							+ new_face_blurred * mouth_contour_mask
+					mouth_blend = Laplacian_Pyramid_Blending_with_mask(p2, f2, raw_mouth_mask2)
+					p = cv2.resize(mouth_blend, (x2 - x1, y2 - y1))
 
 				f[y1:y2, x1:x2] = p
 
@@ -461,7 +424,7 @@ def main():
 		read_frames_count = 0
 		while 1:
 			remaining_frames_in_next_batch = length - read_frames_count - args.batch_size
-			frame_count = length - read_frames_count // 2 if remaining_frames_in_next_batch > 0 and remaining_frames_in_next_batch < args.min_batch_size else args.batch_size
+			frame_count = (length - read_frames_count) // 2 if remaining_frames_in_next_batch > 0 and remaining_frames_in_next_batch < args.min_batch_size else args.batch_size
 			still_reading, frames = read_next_video_frames(video_stream, frame_count)
 			read_frames_count += len(frames)
 
